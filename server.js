@@ -1,21 +1,31 @@
-const express = require("express");
+const express = require('express');
+const bodyParser = require('body-parser');
+const { MessagingResponse, VoiceResponse } = require('twilio');
+
 const app = express();
 
-app.use(express.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ extended: false }));
 
-app.post("/missed-call", (req, res) => {
-  console.log("📞 Missed call from:", req.body.From);
-  res.send(`<Response><Say>Sorry we missed your call. We will text you shortly.</Say></Response>`);
+app.post('/voice', (req, res) => {
+  const voiceResponse = new VoiceResponse();
+  voiceResponse.say('Hi! Sorry we missed your call. We will get back to you soon!');
+  res.type('text/xml');
+  res.send(voiceResponse.toString());
 });
 
-app.post("/incoming-text", (req, res) => {
-  console.log("💬 Text received:", req.body.Body);
-  res.send(`<Response><Message>Thanks! We got your message.</Message></Response>`);
+app.post('/sms', (req, res) => {
+  const smsResponse = new MessagingResponse();
+  smsResponse.message('Hi! Thanks for texting us. We will reply shortly.');
+  res.type('text/xml');
+  res.send(smsResponse.toString());
 });
 
-app.listen(3000, () => {
-  console.log("🚀 Server running on port 3000");
+app.get('/', (req, res) => {
+  res.send('OK');
 });
-version: 3
-agent:
-  authtoken: 3BVHJ2kaPlkhfWIU4UCjDYGk2ka_6U1ofAbS49xPXrfhEwLzm
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log('Server running on port ' + PORT);
+});
