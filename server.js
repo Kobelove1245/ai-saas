@@ -1,123 +1,80 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const twilio = require("twilio");
-const OpenAI = require("openai");
+// server.js
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const { MessagingResponse, VoiceResponse } = require('twilio');
 
 const app = express();
+
 app.use(bodyParser.urlencoded({ extended: false }));
 
-// OpenAI setup
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Handle incoming voice calls
+app.post('/voice', (req, res) => {
+  const voiceResponse = new VoiceResponse();
 
-// =======================
-// HEALTH CHECK
-// =======================
-app.get("/", (req, res) => {
-  res.send("AI Receptionist is running");
-});
-
-// =======================
-// VOICE (AI RECEPTIONIST)
-// =======================
-app.post("/voice", async (req, res) => {
-  const VoiceResponse = twilio.twiml.VoiceResponse;
-  const response = new VoiceResponse();
-
-  try {
-    console.log("📞 VOICE HIT");
-
-    const aiResponse = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are an AI receptionist for a local service business (roofing, plumbing, construction, cleaning).
-
-Rules:
-- Be natural and conversational
-- Keep responses 1–2 short sentences
-- Try to help the caller or ask what they need
-- Your goal is to help book an appointment or capture intent
-          `,
-        },
-        {
-          role: "user",
-          content: "A customer is calling a business right now.",
-        },
-      ],
-    });
-
-    const text = aiResponse.choices[0].message.content;
-
-    console.log("🤖 AI RESPONSE:", text);
-
-    // Speak AI response (slower voice feel via pause + pacing)
-    response.say(
-      {
-        voice: "alice"
-      },
-      text
-    );
-
-    // Prevent instant hang-up
-    response.pause({ length: 3 });
-
-    response.say(
-      {
-        voice: "alice"
-      },
-      "If you would like to leave a message, please speak after the tone."
-    );
-
-    response.record({
-      maxLength: 30,
-      action: "/voice",
-      transcribe: true
-    });
-
-  } catch (err) {
-    console.log("❌ AI ERROR:", err);
-
-    response.say(
-      {
-        voice: "alice"
-      },
-      "Sorry, we missed your call. Please leave a message and we will get back to you."
-    );
-
-    response.record({
-      maxLength: 20,
-      action: "/voice"
-    });
-  }
-
-  res.type("text/xml");
-  res.send(response.toString());
-});
-
-// =======================
-// SMS (basic fallback for now)
-// =======================
-app.post("/sms", (req, res) => {
-  const MessagingResponse = twilio.twiml.MessagingResponse;
-  const response = new MessagingResponse();
-
-  response.message(
-    "Hi! Thanks for contacting us. We will respond shortly."
+  voiceResponse.say(
+    {
+      voice: 'alice',
+      language: 'en-US'
+    },
+    'Hi. Sorry we missed your call. Please leave your name, phone number, and what you need help with after the beep. We will get back to you soon.'
   );
 
-  res.type("text/xml");
-  res.send(response.toString());
+  voiceResponse.record({
+    maxLength: 60,
+    playBeep: true,
+    trim: 'trim-silence',
+    action: '/recording-complete',
+    method: 'POST'
+  });
+
+  voiceResponse.hangup();
+
+  res.type('text/xml');
+  res.send(voiceResponse.toString());
 });
 
-// =======================
-// START SERVER
-// =======================
+// After voicemail recording is complete
+app.post('/recording-complete', (req, res) => {
+  const voiceResponse = new VoiceResponse();
+
+  voiceResponse.say(
+    {
+      voice: 'alice',
+      language: 'en-US'
+    },
+    'Thank you. Your message has been received. Goodbye.'
+  );
+
+  voiceResponse.hangup();
+
+  console.log('New voicemail received:');
+  console.log('From:', req.body.From);
+  console.log('Recording URL:', req.body.RecordingUrl);
+  console.log('Recording duration:', req.body.RecordingDuration);
+
+  res.type('text/xml');
+  res.send(voiceResponse.toString());
+});
+
+// Handle incoming SMS messages
+app.post('/sms', (req, res) => {
+  const smsResponse = new MessagingResponse();
+
+  smsResponse.message('Hi! Thanks for texting us. We will reply shortly.');
+
+  res.type('text/xml');
+  res.send(smsResponse.toString());
+});
+
+// Test route
+app.get('/', (req, res) => {
+  res.send('AI Receptionist server is running.');
+});
+
+// Start the server
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port " + PORT);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
