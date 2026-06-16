@@ -20,14 +20,14 @@ app.post('/voice', (req, res) => {
       voice: 'alice',
       language: 'en-US'
     },
-    'Hi. Sorry we missed your call. Please leave your name, phone number, and what you need help with after the beep. Take your time. When you are finished, you can hang up.'
+    'Hi. Sorry we missed your call. Please leave your name, phone number, and what you need help with after the beep. You can take your time. When you are finished, simply hang up.'
   );
 
   voiceResponse.record({
-    maxLength: 300,
-    timeout: 10,
+    maxLength: 600,
+    timeout: 60,
     playBeep: true,
-    trim: 'trim-silence',
+    trim: 'do-not-trim',
     action: '/recording-complete',
     method: 'POST'
   });
@@ -38,12 +38,15 @@ app.post('/voice', (req, res) => {
 
 // After voicemail recording is complete
 app.post('/recording-complete', (req, res) => {
-  const voiceResponse = new VoiceResponse();
-
   console.log('New voicemail received:');
   console.log('From:', req.body.From);
   console.log('Recording URL:', req.body.RecordingUrl);
   console.log('Recording duration:', req.body.RecordingDuration);
+
+  const voiceResponse = new VoiceResponse();
+
+  // Do not say anything here. Let the caller hang up naturally.
+  // Twilio will end this only after the caller hangs up or the maxLength is reached.
 
   res.type('text/xml');
   res.send(voiceResponse.toString());
