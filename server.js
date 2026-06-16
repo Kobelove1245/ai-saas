@@ -2,7 +2,10 @@
 
 const express = require('express');
 const bodyParser = require('body-parser');
-const { MessagingResponse, VoiceResponse } = require('twilio');
+const twilio = require('twilio');
+
+const MessagingResponse = twilio.twiml.MessagingResponse;
+const VoiceResponse = twilio.twiml.VoiceResponse;
 
 const app = express();
 
