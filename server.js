@@ -4,60 +4,116 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
 
-const MessagingResponse = twilio.twiml.MessagingResponse;
-const VoiceResponse = twilio.twiml.VoiceResponse;
-
 const app = express();
 
 app.use(bodyParser.urlencoded({ extended: false }));
 
-// Handle incoming voice calls
+const VoiceResponse = twilio.twiml.VoiceResponse;
+const MessagingResponse = twilio.twiml.MessagingResponse;
+
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
+const OWNER_PHONE = process.env.OWNER_PHONE;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+
+// Incoming calls
 app.post('/voice', (req, res) => {
   const voiceResponse = new VoiceResponse();
 
   voiceResponse.say(
-    {
-      voice: 'alice',
-      language: 'en-US'
-    },
-    'Hi. Sorry we missed your call. Please leave your name, phone number, and what you need help with after the beep. You can take your time. When you are finished, simply hang up.'
+    { voice: 'alice', language: 'en-US' },
+    'Hi, thanks for calling. I am the virtual receptionist. Please leave your full name, phone number, the service you need, your address if needed, and the best time to reach you. Take your time. When you are finished, simply hang up.'
   );
 
   voiceResponse.record({
-    maxLength: 600,
-    timeout: 60,
+    maxLength: 900,
+    timeout: 0,
     playBeep: true,
     trim: 'do-not-trim',
     action: '/recording-complete',
-    method: 'POST'
+    method: 'POST',
+    transcribe: true,
+    transcribeCallback: '/transcription-complete'
   });
 
   res.type('text/xml');
   res.send(voiceResponse.toString());
 });
 
-// After voicemail recording is complete
-app.post('/recording-complete', (req, res) => {
-  console.log('New voicemail received:');
-  console.log('From:', req.body.From);
-  console.log('Recording URL:', req.body.RecordingUrl);
-  console.log('Recording duration:', req.body.RecordingDuration);
-
+// Recording finished
+app.post('/recording-complete', async (req, res) => {
   const voiceResponse = new VoiceResponse();
 
-  // Do not say anything here. Let the caller hang up naturally.
-  // Twilio will end this only after the caller hangs up or the maxLength is reached.
+  const caller = req.body.From || 'Unknown';
+  const recordingUrl = req.body.RecordingUrl || 'No recording URL';
+  const duration = req.body.RecordingDuration || 'Unknown';
+
+  console.log('New lead recording received:');
+  console.log('Caller:', caller);
+  console.log('Recording:', recordingUrl);
+  console.log('Duration:', duration);
+
+  try {
+    if (OWNER_PHONE && TWILIO_PHONE_NUMBER) {
+      await client.messages.create({
+        body:
+`NEW CALL LEAD
+
+Caller: ${caller}
+Duration: ${duration} seconds
+
+Recording:
+${recordingUrl}.mp3
+
+Transcript will send separately if available.`,
+        from: TWILIO_PHONE_NUMBER,
+        to: OWNER_PHONE
+      });
+    }
+  } catch (error) {
+    console.error('Error sending owner SMS:', error.message);
+  }
 
   res.type('text/xml');
   res.send(voiceResponse.toString());
 });
 
-// Handle incoming SMS messages
+// Transcription finished
+app.post('/transcription-complete', async (req, res) => {
+  const transcriptionText = req.body.TranscriptionText || 'No transcription text received.';
+  const recordingUrl = req.body.RecordingUrl || 'No recording URL';
+
+  console.log('Transcription received:');
+  console.log(transcriptionText);
+
+  try {
+    if (OWNER_PHONE && TWILIO_PHONE_NUMBER) {
+      await client.messages.create({
+        body:
+`CALL LEAD TRANSCRIPT
+
+${transcriptionText}
+
+Recording:
+${recordingUrl}.mp3`,
+        from: TWILIO_PHONE_NUMBER,
+        to: OWNER_PHONE
+      });
+    }
+  } catch (error) {
+    console.error('Error sending transcript SMS:', error.message);
+  }
+
+  res.sendStatus(200);
+});
+
+// Incoming texts
 app.post('/sms', (req, res) => {
   const smsResponse = new MessagingResponse();
-
-  smsResponse.message('Hi! Thanks for texting us. We will reply shortly.');
-
+  smsResponse.message('Hi! Thanks for texting. We received your message and will reply shortly.');
   res.type('text/xml');
   res.send(smsResponse.toString());
 });
@@ -67,7 +123,6 @@ app.get('/', (req, res) => {
   res.send('AI Receptionist server is running.');
 });
 
-// Start the server
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
